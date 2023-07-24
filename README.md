@@ -1,0 +1,4 @@
+# goldbars
+
+An accounting tool.
+

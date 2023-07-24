@@ -1,0 +1,9 @@
+[package]
+name = "goldbars"
+version = "0.0.0"
+edition = "2021"
+repository = "https://github.com/tczajka/gringotts"
+homepage = "https://github.com/tczajka/gringotts"
+readme = "README.md"
+
+[dependencies]
