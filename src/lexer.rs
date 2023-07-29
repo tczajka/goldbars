@@ -1,5 +1,33 @@
 use std::str::CharIndices;
 
+use crate::files::{FileSpan, Span};
+
+pub fn compute_line_starts(text: &str) -> Vec<usize> {
+    let mut line_starts = Vec::new();
+    line_starts.push(0);
+    let mut skip_lf = false;
+    for (index, c) in text.char_indices() {
+        if is_newline(c) && !(skip_lf && c == '\n') {
+            line_starts.push(index + 1);
+        }
+        skip_lf = c == '\r';
+    }
+    line_starts
+}
+
+fn is_newline(c: char) -> bool {
+    [
+        '\n',       // Line feed
+        '\u{B}',    // Vertical tab
+        '\u{C}',    // Form feed
+        '\r',       // Carriage return
+        '\u{85}',   // Next line
+        '\u{2028}', // Line separator
+        '\u{2029}', // Paragraph separator
+    ]
+    .contains(&c)
+}
+
 pub struct Lexer<'a> {
     /// File number.
     file_number: usize,
@@ -7,52 +35,51 @@ pub struct Lexer<'a> {
     text: &'a str,
     /// Current character. None if end of file.
     current_char: Option<char>,
-    /// File location of the current char.
-    file_location: FileLocation,
+    /// Index of the current char.
+    current_index: usize,
     /// Remaining characters.
     char_indices: CharIndices<'a>,
     /// Current token.
-    current_token: TokenInstance,
+    current_token: Token,
     /// Stack of indentation levels.
     indentation_levels: Vec<IndentationLevel>,
     /// Most recently seen indentation.
-    last_indentation: FileRange,
+    last_indentation: Span,
 }
 
 impl<'a> Lexer<'a> {
     /// Creates a new lexer from a string.
     pub fn new(file_number: usize, text: &'a str, mode: LexerMode) -> Self {
         let mut char_indices = text.char_indices();
-        let (index, current_char) = match char_indices.next() {
-            Some((index, current_char)) => (index, Some(current_char)),
+        let (current_index, current_char) = match char_indices.next() {
+            Some((current_index, current_char)) => (current_index, Some(current_char)),
             None => (text.len(), None),
         };
-        let file_location = FileLocation {
-            index,
-            line: 1,
-            column: 1,
-        };
-        let file_range = FileRange {
-            file_number,
-            start: file_location,
-            end: file_location,
-        };
-        let bogus_token = TokenInstance {
-            token: Token::EndOfFile,
-            file_range,
+        let bogus_token = Token {
+            token: TokenKind::EndOfFile,
+            file_span: FileSpan {
+                file_index: file_number,
+                span: Span {
+                    start: current_index,
+                    end: current_index,
+                },
+            },
         };
         let mut lexer = Self {
             file_number,
             text,
             current_char,
-            file_location,
+            current_index,
             char_indices,
             current_token: bogus_token,
             indentation_levels: vec![IndentationLevel {
                 bytes: 0,
                 column: 1,
             }],
-            last_indentation: file_range,
+            last_indentation: Span {
+                start: current_index,
+                end: current_index,
+            },
         };
         lexer.read_indentation();
         lexer.advance(mode);
@@ -60,7 +87,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Returns the current token.
-    pub fn current_token(&self) -> TokenInstance {
+    pub fn current_token(&self) -> Token {
         self.current_token
     }
 
@@ -88,7 +115,7 @@ pub enum LexerMode {
 
 /// A token.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Token {
+pub enum TokenKind {
     // End of file.
     EndOfFile,
     // End of line.
@@ -101,31 +128,9 @@ pub enum Token {
 
 /// Instance of a token.
 #[derive(Clone, Copy, Debug)]
-pub struct TokenInstance {
-    token: Token,
-    file_range: FileRange,
-}
-
-/// Range of characters in a file.
-#[derive(Clone, Copy, Debug)]
-pub struct FileRange {
-    /// Number of the file.
-    file_number: usize,
-    /// Start of the range.
-    start: FileLocation,
-    /// End of the range, exclusive.
-    end: FileLocation,
-}
-
-/// Location of a character in a file.
-#[derive(Clone, Copy, Debug)]
-pub struct FileLocation {
-    /// Byte index.
-    index: usize,
-    /// Line number (starting at 1).
-    line: usize,
-    /// Column number (starting at 1).
-    column: usize,
+pub struct Token {
+    token: TokenKind,
+    file_span: FileSpan,
 }
 
 #[derive(Clone, Copy, Debug)]

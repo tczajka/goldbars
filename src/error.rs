@@ -1,26 +1,23 @@
-use std::{
-    error,
-    fmt::{self, Display, Formatter},
-    io,
-    path::PathBuf,
-};
+use crate::files::FileSpan;
+use std::{io, path::PathBuf};
 
 #[derive(Debug)]
-pub enum Error {
+pub struct Error {
+    pub location: Option<FileSpan>,
+    pub kind: ErrorKind,
+}
+
+#[derive(Debug)]
+pub enum ErrorKind {
     FileReadError {
         file_name: PathBuf,
         error: io::Error,
     },
+    FileReadTwice {
+        file_name: PathBuf,
+        previous_location: Option<FileSpan>,
+    },
+    InvalidUtf8 {
+        bytes: Vec<u8>,
+    },
 }
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        match self {
-            Error::FileReadError { file_name, error } => {
-                write!(f, "Error reading file {}: {error}", file_name.display())
-            }
-        }
-    }
-}
-
-impl error::Error for Error {}

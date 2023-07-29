@@ -1,5 +1,3 @@
-pub use error::Error;
-
 mod error;
+mod files;
 mod lexer;
-mod parser;
