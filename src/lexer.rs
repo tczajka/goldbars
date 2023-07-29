@@ -1,6 +1,5 @@
-use std::str::CharIndices;
-
 use crate::files::{FileSpan, Span};
+use std::str::CharIndices;
 
 pub fn compute_line_starts(text: &str) -> Vec<usize> {
     let mut line_starts = Vec::new();

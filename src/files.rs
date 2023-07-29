@@ -1,12 +1,11 @@
+use crate::{
+    error::{Error, ErrorKind},
+    lexer::compute_line_starts,
+};
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-};
-
-use crate::{
-    error::{Error, ErrorKind},
-    lexer::compute_line_starts,
 };
 
 /// Set of files.
@@ -60,7 +59,7 @@ impl Files {
                 let bytes = from_utf8_error.as_bytes();
                 let utf8_error = from_utf8_error.utf8_error();
                 let index = utf8_error.valid_up_to();
-                let text = String::from_utf8_lossy(&bytes).into_owned();
+                let text = String::from_utf8_lossy(bytes).into_owned();
 
                 let mut invalid_bytes = &bytes[index..];
                 if let Some(n) = utf8_error.error_len() {
