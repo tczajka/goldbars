@@ -1,4 +1,4 @@
-use crate::files::FileSpan;
+use crate::files::{FileSpan, IncludeFileLocation};
 use std::{io, path::PathBuf};
 
 #[derive(Debug)]
@@ -15,7 +15,7 @@ pub enum ErrorKind {
     },
     FileReadTwice {
         file_name: PathBuf,
-        previous_location: Option<FileSpan>,
+        previous_location: IncludeFileLocation,
     },
     InvalidUtf8 {
         bytes: Vec<u8>,

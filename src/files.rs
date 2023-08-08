@@ -6,8 +6,10 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    str,
 };
 
+#[derive(Debug)]
 /// Set of files.
 struct Files {
     /// Files.
@@ -28,91 +30,109 @@ impl Files {
     /// Read a file.
     ///
     /// Returns file index.
-    fn read(&mut self, name: &Path, import_statement: Option<FileSpan>) -> Result<usize, Error> {
+    fn read(
+        &mut self,
+        name: &Path,
+        include_location: IncludeFileLocation,
+        errors: &mut Vec<Error>,
+    ) -> Result<usize, ()> {
+        let include_error_location = match include_location {
+            IncludeFileLocation::CommandLine => None,
+            IncludeFileLocation::Include(file_span) => Some(file_span),
+        };
+
         // Check if file already read.
         if let Some(&index) = self.names.get(name) {
-            return Err(Error {
-                location: import_statement,
+            errors.push(Error {
+                location: include_error_location,
                 kind: ErrorKind::FileReadTwice {
                     file_name: name.to_path_buf(),
-                    previous_location: self.files[index].import_statement,
+                    previous_location: self.files[index].include_location,
                 },
             });
+            return Err(());
         }
 
         // Read file.
-        let bytes = fs::read(name).map_err(|e| Error {
-            location: import_statement,
-            kind: ErrorKind::FileReadError {
-                file_name: name.to_path_buf(),
-                error: e,
-            },
-        })?;
-
-        let file_index = self.files.len();
-
-        // Parse UTF-8.
-        // If there is an error, make a lossy conversion and keep the error.
-        let (text, utf8_error) = match String::from_utf8(bytes) {
-            Ok(text) => (text, None),
-            Err(from_utf8_error) => {
-                let bytes = from_utf8_error.as_bytes();
-                let utf8_error = from_utf8_error.utf8_error();
-                let index = utf8_error.valid_up_to();
-                let text = String::from_utf8_lossy(bytes).into_owned();
-
-                let mut invalid_bytes = &bytes[index..];
-                if let Some(n) = utf8_error.error_len() {
-                    invalid_bytes = &invalid_bytes[..n];
-                }
-
-                assert_eq!(
-                    text[index..].chars().next(),
-                    Some(char::REPLACEMENT_CHARACTER)
-                );
-
-                let error = Error {
-                    location: Some(FileSpan {
-                        file_index,
-                        span: Span {
-                            start: index,
-                            end: index + char::REPLACEMENT_CHARACTER.len_utf8(),
-                        },
-                    }),
-                    kind: ErrorKind::InvalidUtf8 {
-                        bytes: invalid_bytes.to_vec(),
+        let bytes = match fs::read(name) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                errors.push(Error {
+                    location: include_error_location,
+                    kind: ErrorKind::FileReadError {
+                        file_name: name.to_path_buf(),
+                        error,
                     },
-                };
-
-                (text, Some(error))
+                });
+                return Err(());
             }
         };
 
+        let file_index = self.files.len();
+        let text = parse_utf8(bytes, file_index, errors);
         let line_starts = compute_line_starts(&text);
-
         self.files.push(File {
             name: name.to_path_buf(),
-            import_statement,
+            include_location,
             text,
             line_starts,
         });
         self.names.insert(name.to_path_buf(), file_index);
 
-        // Report UTF-8 error.
-        if let Some(utf8_error) = utf8_error {
-            return Err(utf8_error);
-        }
-
         Ok(file_index)
     }
 }
 
+// Parse UTF-8.
+// If there are any errors, make a lossy conversion and keep track of the errors.
+fn parse_utf8(bytes: Vec<u8>, file_index: usize, errors: &mut Vec<Error>) -> String {
+    String::from_utf8(bytes).unwrap_or_else(|from_utf8_error| {
+        let mut bytes = from_utf8_error.as_bytes();
+        let mut utf8_error = from_utf8_error.utf8_error();
+        let mut text = String::new();
+
+        loop {
+            let (valid_bytes, remainder) = bytes.split_at(utf8_error.valid_up_to());
+            // SAFETY: `valid_bytes` is known to be valid UTF-8.
+            text.push_str(unsafe { str::from_utf8_unchecked(valid_bytes) });
+            let invalid_len = utf8_error.error_len().unwrap_or(remainder.len());
+            let (invalid_bytes, remainder) = remainder.split_at(invalid_len);
+            bytes = remainder;
+
+            let start = text.len();
+            text.push(char::REPLACEMENT_CHARACTER);
+            let end = text.len();
+            errors.push(Error {
+                location: Some(FileSpan {
+                    file_index,
+                    span: Span { start, end },
+                }),
+                kind: ErrorKind::InvalidUtf8 {
+                    bytes: invalid_bytes.to_vec(),
+                },
+            });
+            match str::from_utf8(bytes) {
+                Ok(valid_text) => {
+                    text.push_str(valid_text);
+                    break;
+                }
+                Err(e) => {
+                    bytes = remainder;
+                    utf8_error = e;
+                }
+            }
+        }
+        text
+    })
+}
+
+#[derive(Debug)]
 /// Single file contents.
 struct File {
     /// File name.
     name: PathBuf,
-    /// Import statement location.
-    import_statement: Option<FileSpan>,
+    /// Include statement location.
+    include_location: IncludeFileLocation,
     /// File contents.
     text: String,
     /// Indexes where lines start.
@@ -137,4 +157,13 @@ pub struct FileSpan {
     pub file_index: usize,
     /// The span.
     pub span: Span,
+}
+
+/// How was this file included?
+#[derive(Copy, Clone, Debug)]
+pub enum IncludeFileLocation {
+    /// Command line.
+    CommandLine,
+    /// Include statement.
+    Include(FileSpan),
 }
