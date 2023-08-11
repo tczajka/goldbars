@@ -1,15 +1,34 @@
 use crate::files::{FileSpan, Span};
 use std::str::CharIndices;
 
+/// Compute the beginnings of lines.
 pub fn compute_line_starts(text: &str) -> Vec<usize> {
     let mut line_starts = Vec::new();
-    line_starts.push(0);
-    let mut skip_lf = false;
+    enum State {
+        Start,
+        AfterCr,
+        Midline,
+    }
+    use State::*;
+    let mut state = Start;
     for (index, c) in text.char_indices() {
-        if is_newline(c) && !(skip_lf && c == '\n') {
-            line_starts.push(index + 1);
+        match state {
+            AfterCr if c == '\n' => {
+                state = Start;
+                continue;
+            }
+            Start | AfterCr => {
+                line_starts.push(index);
+            }
+            Midline => {}
         }
-        skip_lf = c == '\r';
+        state = if c == '\r' {
+            AfterCr
+        } else if is_newline(c) {
+            Start
+        } else {
+            Midline
+        };
     }
     line_starts
 }
