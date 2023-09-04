@@ -17,6 +17,10 @@ fn test_line_starts() {
         ("abc\rdef\r", &[0, 4]),
         // Unicode.
         ("żółw\nż", &[0, 8]),
+        // BOM
+        ("\u{FEFF}abc\n", &[3]),
+        // Second FEFF isn't BOM.
+        ("\u{FEFF}\u{FEFF}abc\n", &[3]),
         // All kinds of endings.
         (
             "abc\nabc\rabc\r\nabc\u{B}abc\u{C}abc\u{85}abc\u{2028}abc\u{2029}abc",

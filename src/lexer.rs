@@ -3,29 +3,40 @@ use std::str::CharIndices;
 
 /// Compute the beginnings of lines.
 pub fn compute_line_starts(text: &str) -> Vec<usize> {
-    let mut line_starts = Vec::new();
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     enum State {
-        Start,
+        FileStart,
+        LineStart,
         AfterCr,
         Midline,
     }
     use State::*;
-    let mut state = Start;
+
+    let mut line_starts = Vec::new();
+    let mut state = FileStart;
     for (index, c) in text.char_indices() {
         match state {
-            AfterCr if c == '\n' => {
-                state = Start;
-                continue;
+            State::FileStart => {
+                state = LineStart;
+                if c == BYTE_ORDER_MARK {
+                    continue;
+                }
             }
-            Start | AfterCr => {
-                line_starts.push(index);
+            State::AfterCr => {
+                state = LineStart;
+                if c == '\n' {
+                    continue;
+                }
             }
-            Midline => {}
+            _ => {}
+        }
+        if state == LineStart {
+            line_starts.push(index);
         }
         state = if c == '\r' {
             AfterCr
         } else if is_newline(c) {
-            Start
+            LineStart
         } else {
             Midline
         };
@@ -45,6 +56,8 @@ fn is_newline(c: char) -> bool {
     ]
     .contains(&c)
 }
+
+const BYTE_ORDER_MARK: char = '\u{FEFF}';
 
 pub struct Lexer<'a> {
     /// File number.
