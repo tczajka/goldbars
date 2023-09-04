@@ -10,10 +10,10 @@ pub struct Error {
 #[derive(Debug)]
 pub enum ErrorKind {
     FileReadError {
-        file_name: PathBuf,
+        file_index: usize,
         error: io::Error,
     },
-    FileReadTwice {
+    FileIncludedTwice {
         file_name: PathBuf,
         previous_location: IncludeFileLocation,
     },

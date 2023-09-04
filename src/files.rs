@@ -41,11 +41,11 @@ impl Files {
             IncludeFileLocation::Include(file_span) => Some(file_span),
         };
 
-        // Check if file already read.
+        // Check if file already included.
         if let Some(&index) = self.names.get(name) {
             errors.push(Error {
                 location: include_error_location,
-                kind: ErrorKind::FileReadTwice {
+                kind: ErrorKind::FileIncludedTwice {
                     file_name: name.to_path_buf(),
                     previous_location: self.files[index].include_location,
                 },
@@ -53,31 +53,29 @@ impl Files {
             return Err(());
         }
 
+        let file_index = self.files.len();
+        self.files.push(File {
+            name: name.to_path_buf(),
+            include_location,
+            contents: None,
+        });
+        self.names.insert(name.to_path_buf(), file_index);
+
         // Read file.
         let bytes = match fs::read(name) {
             Ok(bytes) => bytes,
             Err(error) => {
                 errors.push(Error {
                     location: include_error_location,
-                    kind: ErrorKind::FileReadError {
-                        file_name: name.to_path_buf(),
-                        error,
-                    },
+                    kind: ErrorKind::FileReadError { file_index, error },
                 });
                 return Err(());
             }
         };
 
-        let file_index = self.files.len();
         let text = parse_utf8(bytes, file_index, errors);
         let line_starts = compute_line_starts(&text);
-        self.files.push(File {
-            name: name.to_path_buf(),
-            include_location,
-            text,
-            line_starts,
-        });
-        self.names.insert(name.to_path_buf(), file_index);
+        self.files[file_index].contents = Some(FileContents { text, line_starts });
 
         Ok(file_index)
     }
@@ -127,13 +125,20 @@ fn parse_utf8(bytes: Vec<u8>, file_index: usize, errors: &mut Vec<Error>) -> Str
 }
 
 #[derive(Debug)]
-/// Single file contents.
+/// Single file.
 struct File {
     /// File name.
     name: PathBuf,
     /// Include statement location.
     include_location: IncludeFileLocation,
     /// File contents.
+    contents: Option<FileContents>,
+}
+
+/// File contents.
+#[derive(Debug)]
+struct FileContents {
+    /// Text of the file.
     text: String,
     /// Indexes where lines start.
     /// The first index is always 0.
